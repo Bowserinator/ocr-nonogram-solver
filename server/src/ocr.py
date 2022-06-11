@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import easyocr
 
-from spacial_bin import SpacialBin
+from src.spacial_bin import SpacialBin
 
 reader = easyocr.Reader(['en'])
 
@@ -18,17 +18,39 @@ def recognize(image):
 
     image = cv2.imread(image)
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    blur = cv2.GaussianBlur(gray, (9, 9), 0)
+    blur = cv2.GaussianBlur(gray, (7, 7), 0)
     thresh = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                 cv2.THRESH_BINARY_INV, 11, 30)
 
+    cnts = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+
+    for c in cnts:
+        _, _, w, h = cv2.boundingRect(c)
+        area = cv2.contourArea(c)
+
+        # Filter out "bad" contours:
+        # 1. Area too small: just a tiny dot
+        # 2. Area too large: a large dot
+        # 3. Too small of a width or height: Tiny dot or thin line
+        # 4. Bad width:height ratio: probably a line
+        if area < w * h * 0.05 or  area > (w - 1) * (h - 1) * 0.9 or \
+            area > (w - 1) * (h - 1) - 4 or \
+            w < 2 or h < 2 or w / h < 0.05 or w / h > 20:
+            cv2.drawContours(thresh, [c], -1, (0, 0, 0), -1)
+
+
     # Dilate to combine adjacent text contours
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (6, 6))
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)) # 6,6
     crop = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                 cv2.THRESH_BINARY_INV, 11, 30)
     dilate = cv2.dilate(thresh, kernel, iterations=4)
 
-    # Find contours, highlight text areas, and extract ROIs
+    cv2.imwrite("gray.png", gray)
+    cv2.imwrite("thresh.png", thresh)
+    cv2.imwrite("dilate.png", dilate)
+
+    # Find contours, highlight text areas
     cnts = cv2.findContours(dilate, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     cnts = cnts[0] if len(cnts) == 2 else cnts[1]
     areas = []
@@ -36,9 +58,6 @@ def recognize(image):
     for c in cnts:
         area = cv2.contourArea(c)
         areas.append(area)
-
-    # Filter small areas (might just be an intersection or dot)
-    cnts = [c for c in cnts if cv2.contourArea(c) > min(areas) * 1.25]
 
     rect = cv2.boundingRect(cnts[0])
     is_column_mode = False
@@ -58,6 +77,9 @@ def recognize(image):
         subimage = crop[y:y + h, x:x + w]
 
         p = reader.recognize(subimage, allowlist="0123456789")
+        if p[0][1] == "":
+            continue
+
         read_char = int(p[0][1])
 
         if x > image.shape[0] // 2 + tolerance:

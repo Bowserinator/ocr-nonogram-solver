@@ -1,0 +1,4 @@
+easyocr
+picross_solver
+numpy
+opencv-python

@@ -1,4 +1,6 @@
 import numpy as np
+import base64
+from src import ocr
 from picross_solver import picross_solver
 
 
@@ -29,3 +31,27 @@ def pretty_print_solution(puzzle):
                 out = "?"
             print(out, end="")
         print("")
+
+
+def encode_solution(solution):
+    """
+    Base64 encode a solution for comparison
+    :param solution: Matrix, must contain only 0s and 1s
+    :return: string
+    """
+    solution = solution.flatten()
+    bs = []
+    for i in range(0, len(solution), 8):
+        b = int("".join([str(x) for x in solution[i: i + 8]]), 2)
+        bs.append(b)
+    return str(base64.b64encode(bytes(bs)))[2:-1]
+
+
+def solve_image(path):
+    """
+    OCR + solve
+    :param path: Path to image
+    :return: solution (matrix), success
+    """
+    row, col = ocr.recognize(path)
+    return solve(row, col)
